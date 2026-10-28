@@ -1,0 +1,10 @@
+server:
+  port: 5000
+
+spring:
+  application:
+    name: similar-products-api
+  threads:
+    virtual:
+      # Each request blocked on downstream I/O parks a virtual thread instead of an OS thread
+      enabled: true
