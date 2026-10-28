@@ -4,18 +4,21 @@ import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlMatching;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.example.similarproducts.domain.ProductNotFoundException;
 import com.example.similarproducts.domain.UpstreamUnavailableException;
 import com.github.tomakehurst.wiremock.junit5.WireMockExtension;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.cache.CacheManager;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
@@ -43,9 +46,13 @@ class ProductClientCircuitBreakerTest {
     @Autowired
     private CircuitBreakerRegistry circuitBreakers;
 
+    @Autowired
+    private CacheManager cacheManager;
+
     @BeforeEach
-    void closeCircuitBreakers() {
-        circuitBreakers.getAllCircuitBreakers().forEach(cb -> cb.reset());
+    void resetState() {
+        circuitBreakers.getAllCircuitBreakers().forEach(CircuitBreaker::reset);
+        cacheManager.getCacheNames().forEach(name -> cacheManager.getCache(name).clear());
     }
 
     @Test
@@ -61,12 +68,12 @@ class ProductClientCircuitBreakerTest {
 
     @Test
     void notFoundProductsDoNotOpenTheCircuit() {
-        upstream.stubFor(get("/product/5").willReturn(aResponse().withStatus(404)));
+        upstream.stubFor(get(urlMatching("/product/[0-9]+")).willReturn(aResponse().withStatus(404)));
 
-        for (int i = 0; i < 6; i++) {
-            assertThatThrownBy(() -> client.getProductDetail("5")).isInstanceOf(ProductNotFoundException.class);
+        for (int id = 10; id < 16; id++) {
+            assertThat(client.getProductDetail(String.valueOf(id))).isEmpty();
         }
 
-        upstream.verify(6, getRequestedFor(urlEqualTo("/product/5")));
+        assertThat(circuitBreakers.circuitBreaker("productDetail").getState()).isEqualTo(CircuitBreaker.State.CLOSED);
     }
 }

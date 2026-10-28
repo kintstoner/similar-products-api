@@ -12,10 +12,12 @@ import com.example.similarproducts.domain.ProductNotFoundException;
 import com.example.similarproducts.domain.UpstreamUnavailableException;
 import com.github.tomakehurst.wiremock.junit5.WireMockExtension;
 import java.math.BigDecimal;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.cache.CacheManager;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
@@ -35,6 +37,14 @@ class ProductClientTest {
 
     @Autowired
     private ProductClient client;
+
+    @Autowired
+    private CacheManager cacheManager;
+
+    @BeforeEach
+    void clearCaches() {
+        cacheManager.getCacheNames().forEach(name -> cacheManager.getCache(name).clear());
+    }
 
     @Test
     void returnsSimilarIdsInOrderEvenWhenUpstreamSendsNumbers() {
@@ -65,14 +75,14 @@ class ProductClientTest {
                 okJson("{\"id\":\"1\",\"name\":\"Shirt\",\"price\":9.99,\"availability\":true}")));
 
         assertThat(client.getProductDetail("1"))
-                .isEqualTo(new ProductDetail("1", "Shirt", new BigDecimal("9.99"), true));
+                .contains(new ProductDetail("1", "Shirt", new BigDecimal("9.99"), true));
     }
 
     @Test
-    void throwsProductNotFoundWhenDetailReturns404() {
+    void returnsEmptyWhenDetailReturns404() {
         upstream.stubFor(get("/product/5").willReturn(aResponse().withStatus(404)));
 
-        assertThatThrownBy(() -> client.getProductDetail("5")).isInstanceOf(ProductNotFoundException.class);
+        assertThat(client.getProductDetail("5")).isEmpty();
     }
 
     @Test

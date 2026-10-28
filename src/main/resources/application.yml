@@ -8,6 +8,11 @@ spring:
     virtual:
       # Each request blocked on downstream I/O parks a virtual thread instead of an OS thread
       enabled: true
+  cache:
+    cache-names: productDetails, similarIds
+    # Short TTL bounds staleness of price and availability; the size cap bounds memory
+    caffeine:
+      spec: maximumSize=10000,expireAfterWrite=5m
 
 product-api:
   base-url: http://localhost:3001

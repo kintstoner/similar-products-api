@@ -55,7 +55,7 @@ public class SimilarProductsService {
                         log.debug("Similar product {} left out: {}", id, error.toString());
                         return Optional.empty();
                     }
-                    return Optional.of(detail);
+                    return detail;
                 });
     }
 }
