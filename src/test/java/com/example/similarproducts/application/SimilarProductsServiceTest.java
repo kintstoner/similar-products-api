@@ -11,6 +11,9 @@ import com.example.similarproducts.domain.ProductDetail;
 import com.example.similarproducts.domain.ProductNotFoundException;
 import com.example.similarproducts.domain.UpstreamUnavailableException;
 import com.example.similarproducts.infrastructure.ProductClient;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.List;
@@ -24,6 +27,7 @@ class SimilarProductsServiceTest {
 
     private final ProductClient productClient = mock(ProductClient.class);
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+    private final MeterRegistry meterRegistry = new SimpleMeterRegistry();
 
     @AfterEach
     void shutDownExecutor() {
@@ -67,6 +71,8 @@ class SimilarProductsServiceTest {
         assertThat(service(Duration.ofSeconds(1)).getSimilarProducts("4"))
                 .extracting(ProductDetail::id)
                 .containsExactly("1");
+        assertThat(leftOut("missing")).isEqualTo(1);
+        assertThat(leftOut("failed")).isZero();
     }
 
     @Test
@@ -80,6 +86,8 @@ class SimilarProductsServiceTest {
         assertThat(service(Duration.ofSeconds(1)).getSimilarProducts("5"))
                 .extracting(ProductDetail::id)
                 .containsExactly("1");
+        assertThat(leftOut("failed")).isEqualTo(2);
+        assertThat(leftOut("missing")).isZero();
     }
 
     @Test
@@ -116,7 +124,13 @@ class SimilarProductsServiceTest {
     }
 
     private SimilarProductsService service(Duration lookupTimeout) {
-        return new SimilarProductsService(productClient, executor, new SimilarProductsProperties(lookupTimeout));
+        return new SimilarProductsService(productClient, executor, new SimilarProductsProperties(lookupTimeout),
+                meterRegistry);
+    }
+
+    private double leftOut(String reason) {
+        Counter counter = meterRegistry.find("similar.products.left.out").tag("reason", reason).counter();
+        return counter == null ? 0 : counter.count();
     }
 
     private static ProductDetail product(String id) {

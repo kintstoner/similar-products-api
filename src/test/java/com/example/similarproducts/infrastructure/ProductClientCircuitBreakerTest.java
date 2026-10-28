@@ -15,9 +15,12 @@ import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.cache.CacheManager;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -28,6 +31,7 @@ import org.springframework.test.context.DynamicPropertySource;
         "resilience4j.circuitbreaker.instances.productDetail.failure-rate-threshold=50",
         "resilience4j.circuitbreaker.instances.productDetail.wait-duration-in-open-state=1h"
 })
+@ExtendWith(OutputCaptureExtension.class)
 class ProductClientCircuitBreakerTest {
 
     @RegisterExtension
@@ -64,6 +68,17 @@ class ProductClientCircuitBreakerTest {
         }
 
         upstream.verify(4, getRequestedFor(urlEqualTo("/product/6")));
+    }
+
+    @Test
+    void logsWhenTheCircuitOpens(CapturedOutput output) {
+        upstream.stubFor(get("/product/6").willReturn(aResponse().withStatus(500)));
+
+        for (int i = 0; i < 4; i++) {
+            assertThatThrownBy(() -> client.getProductDetail("6")).isInstanceOf(UpstreamUnavailableException.class);
+        }
+
+        assertThat(output).contains("Circuit breaker productDetail changed from CLOSED to OPEN");
     }
 
     @Test
