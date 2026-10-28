@@ -12,6 +12,8 @@ import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Supplier;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
@@ -33,6 +35,8 @@ import org.springframework.web.client.RestClientException;
  */
 @Component
 public class ProductClient {
+
+    private static final Logger log = LoggerFactory.getLogger(ProductClient.class);
 
     private final RestClient restClient;
     private final CircuitBreaker similarIdsCircuitBreaker;
@@ -63,21 +67,28 @@ public class ProductClient {
     }
 
     /**
-     * @return the product detail, or empty when the product does not exist (Spring caches the empty result too)
+     * @return the product detail, or empty when the product does not exist or its detail lacks a field the contract
+     *         requires (Spring caches the empty result too)
      */
     @Cacheable(CacheNames.PRODUCT_DETAILS)
     public Optional<ProductDetail> getProductDetail(String productId) {
+        ProductDetailResponse body;
         try {
-            return Optional.ofNullable(call(productDetailCircuitBreaker, productDetailBulkhead, productId, () -> restClient.get()
+            body = call(productDetailCircuitBreaker, productDetailBulkhead, productId, () -> restClient.get()
                     .uri("/product/{productId}", productId)
                     .retrieve()
                     .onStatus(status -> status.isSameCodeAs(HttpStatus.NOT_FOUND), (request, response) -> {
                         throw new ProductNotFoundException(productId);
                     })
-                    .body(ProductDetail.class)));
+                    .body(ProductDetailResponse.class));
         } catch (ProductNotFoundException e) {
             return Optional.empty();
         }
+        Optional<ProductDetail> detail = body == null ? Optional.empty() : body.toDomain();
+        if (detail.isEmpty()) {
+            log.warn("Product {} left out: incomplete detail from the product API: {}", productId, body);
+        }
+        return detail;
     }
 
     private static <T> T call(CircuitBreaker circuitBreaker, Bulkhead bulkhead, String productId,

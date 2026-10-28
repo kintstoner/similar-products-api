@@ -15,6 +15,8 @@ import java.math.BigDecimal;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.cache.CacheManager;
@@ -76,6 +78,22 @@ class ProductClientTest {
 
         assertThat(client.getProductDetail("1"))
                 .contains(new ProductDetail("1", "Shirt", new BigDecimal("9.99"), true));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "{\"name\":\"Shirt\",\"price\":9.99,\"availability\":true}",
+            "{\"id\":\"\",\"name\":\"Shirt\",\"price\":9.99,\"availability\":true}",
+            "{\"id\":\"1\",\"price\":9.99,\"availability\":true}",
+            "{\"id\":\"1\",\"name\":\" \",\"price\":9.99,\"availability\":true}",
+            "{\"id\":\"1\",\"name\":\"Shirt\",\"availability\":true}",
+            "{\"id\":\"1\",\"name\":\"Shirt\",\"price\":9.99}",
+            "{\"id\":\"1\",\"name\":\"Shirt\",\"price\":9.99,\"availability\":null}"
+    })
+    void returnsEmptyWhenDetailLacksAFieldTheContractRequires(String incompleteBody) {
+        upstream.stubFor(get("/product/1").willReturn(okJson(incompleteBody)));
+
+        assertThat(client.getProductDetail("1")).isEmpty();
     }
 
     @Test
