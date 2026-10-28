@@ -26,4 +26,6 @@ service that is already struggling.
   slow products immediately instead of waiting 3 s each. Cached products are still served (see ADR 5).
 - Because cached products never reach the breaker, it only sees uncached calls; while it is open, an uncached healthy
   product is also left out for up to 5 s. A per-product bulkhead would avoid this at the cost of more complexity.
-- Breaker state is exposed in `/actuator/health` and `/actuator/circuitbreakers`.
+- Breaker state is exposed in `/actuator/health` and `/actuator/circuitbreakers`, and every state change is logged
+  as a warning: an opening circuit means products are being left out of responses.
+- Each endpoint also has a bulkhead that caps the calls in flight (ADR 7).

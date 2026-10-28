@@ -29,4 +29,6 @@ ya tiene problemas.
 - Como los productos cacheados nunca llegan al breaker, este solo ve llamadas no cacheadas; mientras está abierto,
   un producto sano no cacheado también se omite durante hasta 5 s. Un bulkhead por producto lo evitaría a cambio de
   más complejidad.
-- El estado del breaker se publica en `/actuator/health` y `/actuator/circuitbreakers`.
+- El estado del breaker se publica en `/actuator/health` y `/actuator/circuitbreakers`, y cada cambio de estado se
+  registra como aviso en el log: un circuito que se abre significa que se están omitiendo productos.
+- Cada endpoint tiene además un bulkhead que limita las llamadas en vuelo (ADR 7).
