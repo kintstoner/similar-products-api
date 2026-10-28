@@ -19,12 +19,23 @@
 		<openapi-generator.version>7.26.0</openapi-generator.version>
 		<wiremock.version>3.13.2</wiremock.version>
 		<resilience4j.version>2.4.0</resilience4j.version>
+		<springdoc.version>3.2.0</springdoc.version>
 	</properties>
 
 	<dependencies>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-webmvc</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-actuator</artifactId>
+		</dependency>
+		<dependency>
+			<!-- Swagger UI only: it renders the agreed contract file, nothing is generated at runtime -->
+			<groupId>org.springdoc</groupId>
+			<artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+			<version>${springdoc.version}</version>
 		</dependency>
 		<dependency>
 			<!-- Generated DTOs carry @NotNull for the contract's required fields -->
@@ -81,7 +92,7 @@
 							<goal>generate</goal>
 						</goals>
 						<configuration>
-							<inputSpec>${project.basedir}/src/main/resources/openapi/similarProducts.yaml</inputSpec>
+							<inputSpec>${project.basedir}/src/main/resources/static/openapi/similarProducts.yaml</inputSpec>
 							<generatorName>spring</generatorName>
 							<apiPackage>com.example.similarproducts.api.generated</apiPackage>
 							<modelPackage>com.example.similarproducts.api.generated.model</modelPackage>

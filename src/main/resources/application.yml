@@ -12,7 +12,24 @@ spring:
     cache-names: productDetails, similarIds
     # Short TTL bounds staleness of price and availability; the size cap bounds memory
     caffeine:
-      spec: maximumSize=10000,expireAfterWrite=5m
+      spec: maximumSize=10000,expireAfterWrite=5m,recordStats
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics, caches, circuitbreakers
+  endpoint:
+    health:
+      show-details: always
+  health:
+    circuitbreakers:
+      enabled: true
+
+springdoc:
+  # Swagger UI shows the agreed contract file as-is rather than the document derived from the code
+  swagger-ui:
+    url: /openapi/similarProducts.yaml
 
 product-api:
   base-url: http://localhost:3001
@@ -34,6 +51,8 @@ resilience4j:
         failure-rate-threshold: 50
         wait-duration-in-open-state: 5s
         permitted-number-of-calls-in-half-open-state: 5
+        # Shows each breaker state in /actuator/health
+        register-health-indicator: true
         # A missing product is a valid answer, not a sign that the product API is unhealthy
         ignore-exceptions:
           - com.example.similarproducts.domain.ProductNotFoundException
