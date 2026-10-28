@@ -2,14 +2,12 @@ package com.example.similarproducts.config;
 
 import com.example.similarproducts.infrastructure.ProductApiProperties;
 import java.net.http.HttpClient;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
 @Configuration
-@EnableConfigurationProperties(ProductApiProperties.class)
 public class HttpClientConfig {
 
     @Bean

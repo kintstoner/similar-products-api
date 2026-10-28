@@ -34,6 +34,7 @@ class SimilarProductsEndpointTest {
     @DynamicPropertySource
     static void upstreamProperties(DynamicPropertyRegistry registry) {
         registry.add("product-api.base-url", upstream::baseUrl);
+        registry.add("product-api.read-timeout", () -> "1s");
     }
 
     @Autowired
@@ -59,9 +60,9 @@ class SimilarProductsEndpointTest {
     @Test
     void fetchesProductDetailsInParallel() throws Exception {
         stubSimilarIds("1", "[2,3,4]");
-        stubProduct("2", 500);
-        stubProduct("3", 500);
-        stubProduct("4", 500);
+        stubProduct("2", 300);
+        stubProduct("3", 300);
+        stubProduct("4", 300);
 
         long start = System.nanoTime();
         mockMvc.perform(get("/product/1/similar"))
@@ -69,7 +70,7 @@ class SimilarProductsEndpointTest {
                 .andExpect(jsonPath("$.length()").value(3));
         long elapsedMillis = (System.nanoTime() - start) / 1_000_000;
 
-        assertThat(elapsedMillis).isLessThan(1_200);
+        assertThat(elapsedMillis).isLessThan(800);
     }
 
     @Test
@@ -100,6 +101,55 @@ class SimilarProductsEndpointTest {
                 .andExpect(status().isNotFound())
                 .andExpect(content().contentType("application/problem+json"))
                 .andExpect(jsonPath("$.detail").value("Product not found: 99"));
+    }
+
+    @Test
+    void dropsSimilarProductsThatAreNotFound() throws Exception {
+        stubSimilarIds("4", "[1,2,5]");
+        stubProduct("1", 0);
+        stubProduct("2", 0);
+        upstream.stubFor(WireMock.get("/product/5").willReturn(aResponse().withStatus(404)));
+
+        mockMvc.perform(get("/product/4/similar"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[*].id").value(contains("1", "2")));
+    }
+
+    @Test
+    void dropsSimilarProductsWhoseDetailFails() throws Exception {
+        stubSimilarIds("5", "[1,2,6]");
+        stubProduct("1", 0);
+        stubProduct("2", 0);
+        upstream.stubFor(WireMock.get("/product/6").willReturn(aResponse().withStatus(500)));
+
+        mockMvc.perform(get("/product/5/similar"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[*].id").value(contains("1", "2")));
+    }
+
+    @Test
+    void dropsSimilarProductsSlowerThanTheReadTimeoutWithoutWaitingForThem() throws Exception {
+        stubSimilarIds("2", "[3,100,1000]");
+        stubProduct("3", 0);
+        stubProduct("100", 200);
+        stubProduct("1000", 5_000);
+
+        long start = System.nanoTime();
+        mockMvc.perform(get("/product/2/similar"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[*].id").value(contains("3", "100")));
+        long elapsedMillis = (System.nanoTime() - start) / 1_000_000;
+
+        assertThat(elapsedMillis).isLessThan(2_000);
+    }
+
+    @Test
+    void returns503WhenSimilarIdsAreUnavailable() throws Exception {
+        upstream.stubFor(WireMock.get("/product/1/similarids").willReturn(aResponse().withStatus(500)));
+
+        mockMvc.perform(get("/product/1/similar"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(content().contentType("application/problem+json"));
     }
 
     private static void stubSimilarIds(String productId, String body) {
