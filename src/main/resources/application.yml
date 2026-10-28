@@ -56,6 +56,20 @@ resilience4j:
         # A missing product is a valid answer, not a sign that the product API is unhealthy
         ignore-exceptions:
           - com.example.similarproducts.domain.ProductNotFoundException
+          # Hitting our own concurrency cap says nothing about the product API's health
+          - io.github.resilience4j.bulkhead.BulkheadFullException
+    instances:
+      productSimilarIds:
+        base-config: default
+      productDetail:
+        base-config: default
+  bulkhead:
+    configs:
+      default:
+        # Cap on calls in flight per endpoint; the load test peaks at a few hundred concurrent detail calls
+        max-concurrent-calls: 500
+        # Absorbs short bursts; beyond that the call is rejected and the product left out
+        max-wait-duration: 200ms
     instances:
       productSimilarIds:
         base-config: default
