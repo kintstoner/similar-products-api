@@ -83,10 +83,18 @@ and consequences. In short:
 
 ## How it was tested
 
-- **27 automated tests** (`./mvnw verify`), using WireMock as the product API: similarity order with a slower earlier
-  product, parallelism (three 300 ms products answer in under 800 ms), deduplication, empty list, 404, partial
-  results for 404/500/timeout, 503, circuit breaker opening (and not opening on 404s), caching of details, ids and
-  404s, no caching of failures, health, metrics and Swagger UI.
+- **37 automated tests** (`./mvnw verify`), in three layers:
+
+  | Layer | Tests | What they cover |
+  |---|---|---|
+  | Unit (JUnit 5 + Mockito, no Spring) | `SimilarProductsServiceTest` (7) | Similarity order when an earlier product answers last, deduplication, products left out on 404/failure, lookup safety timeout, empty list, 404 propagation |
+  | Web slice (`@WebMvcTest`) | `SimilarProductsControllerTest` (3) | Contract JSON format and order, 404 and 503 Problem Details (no internal messages leaked) |
+  | Integration (Spring Boot + WireMock as the product API) | `ProductClientTest`, `ProductClientCacheTest`, `ProductClientCircuitBreakerTest`, `SimilarProductsEndpointTest`, `OperationalEndpointsTest` (26) | Real HTTP: numeric ids, 404/500/timeout translation, parallelism, partial results, 503, circuit breaker opening (and not on 404s), caching of details, ids and 404s, no caching of failures, health, metrics, Swagger UI |
+
+  Unit tests check the orchestration logic in isolation; integration tests check what only shows up over real HTTP
+  (timeouts, upstream quirks, cache and breaker wiring). The unit and web tests were checked against deliberate bugs
+  (removing deduplication, the safety timeout or the failure handling, reversing the order, leaking the internal
+  error message): each bug made at least one test fail.
 - **Manual checks** against the real mocks, with the app in Docker: `/product/1` returns 2, 3, 4 in order;
   `/product/4` and `/product/5` return 1, 2; `/product/2` returns 3, 100 in about 3 s; `/product/3` returns 100;
   `/product/99` returns 404.

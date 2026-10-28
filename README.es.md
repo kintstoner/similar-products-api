@@ -83,10 +83,18 @@ opciones y consecuencias. En breve:
 
 ## Cómo se ha probado
 
-- **27 tests automáticos** (`./mvnw verify`), con WireMock como API de productos: orden de similitud con un producto
-  anterior más lento, paralelismo (tres productos de 300 ms responden en menos de 800 ms), deduplicación, lista
-  vacía, 404, resultados parciales con 404/500/timeout, 503, apertura del circuit breaker (y que no se abra con
-  404), caché de detalles, ids y 404, no cachear fallos, health, métricas y Swagger UI.
+- **37 tests automáticos** (`./mvnw verify`), en tres capas:
+
+  | Capa | Tests | Qué cubren |
+  |---|---|---|
+  | Unitarios (JUnit 5 + Mockito, sin Spring) | `SimilarProductsServiceTest` (7) | Orden de similitud cuando un producto anterior responde el último, deduplicación, omisión ante 404/fallo, timeout de seguridad, lista vacía, propagación del 404 |
+  | Slice web (`@WebMvcTest`) | `SimilarProductsControllerTest` (3) | Formato JSON del contrato y orden, Problem Details 404 y 503 (sin filtrar mensajes internos) |
+  | Integración (Spring Boot + WireMock como API de productos) | `ProductClientTest`, `ProductClientCacheTest`, `ProductClientCircuitBreakerTest`, `SimilarProductsEndpointTest`, `OperationalEndpointsTest` (26) | HTTP real: ids numéricos, traducción de 404/500/timeout, paralelismo, resultados parciales, 503, apertura del circuit breaker (y que no se abra con 404), caché de detalles, ids y 404, no cachear fallos, health, métricas, Swagger UI |
+
+  Los unitarios prueban la lógica de orquestación aislada; los de integración, lo que solo aparece con HTTP real
+  (timeouts, rarezas del API externo, cableado de caché y breaker). Los unitarios y los de la capa web se comprobaron
+  contra errores introducidos a propósito (quitar la deduplicación, el timeout de seguridad o el manejo de fallos,
+  invertir el orden, filtrar el mensaje interno del error): cada error hizo fallar al menos un test.
 - **Comprobaciones manuales** contra los mocks reales, con la app en Docker: `/product/1` devuelve 2, 3, 4 en orden;
   `/product/4` y `/product/5` devuelven 1, 2; `/product/2` devuelve 3, 100 en unos 3 s; `/product/3` devuelve 100;
   `/product/99` devuelve 404.
