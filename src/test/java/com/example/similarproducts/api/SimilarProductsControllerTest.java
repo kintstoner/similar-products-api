@@ -1,5 +1,6 @@
 package com.example.similarproducts.api;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -13,14 +14,28 @@ import com.example.similarproducts.domain.UpstreamUnavailableException;
 import java.math.BigDecimal;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.json.JsonCompareMode;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(SimilarProductsController.class)
+@ExtendWith(OutputCaptureExtension.class)
 class SimilarProductsControllerTest {
+
+    @Test
+    void logsTheCauseOfA503(CapturedOutput output) throws Exception {
+        when(similarProductsService.getSimilarProducts("1")).thenThrow(new UpstreamUnavailableException(
+                "Product API failed for product 1", new IllegalStateException("connection reset")));
+
+        mockMvc.perform(get("/product/1/similar")).andExpect(status().isServiceUnavailable());
+
+        assertThat(output).contains("Product API failed for product 1").contains("connection reset");
+    }
 
     @Autowired
     private MockMvc mockMvc;
