@@ -58,8 +58,8 @@ Paquetes (por responsabilidad, hexagonal ligera):
 |---|---|
 | `api` | Controlador que implementa la interfaz generada; manejador de excepciones con Problem Details (RFC 9457) |
 | `application` | `SimilarProductsService`: ids, después detalles en paralelo, recogidos en el orden original |
-| `domain` | Record `ProductDetail` y excepciones de dominio |
-| `infrastructure` | `ProductClient`: llamadas HTTP, circuit breakers, bulkheads, caché, validación, traducción de errores |
+| `domain` | Record `ProductDetail`, excepciones de dominio y el port `ProductCatalog` del que depende el servicio |
+| `infrastructure` | `ProductClient` (implementa `ProductCatalog`): llamadas HTTP, circuit breakers, bulkheads, caché, validación, traducción de errores |
 | `config` | Timeouts del cliente HTTP, executor de hilos virtuales, caché, log del circuit breaker |
 
 ## Comportamiento

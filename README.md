@@ -58,8 +58,8 @@ Packages (by responsibility, light hexagonal):
 |---|---|
 | `api` | Controller implementing the generated interface; exception handler producing RFC 9457 Problem Details |
 | `application` | `SimilarProductsService`: ids, then details in parallel, collected in the original order |
-| `domain` | `ProductDetail` record and domain exceptions |
-| `infrastructure` | `ProductClient`: HTTP calls, circuit breakers, bulkheads, cache, validation, error translation |
+| `domain` | `ProductDetail` record, domain exceptions and the `ProductCatalog` port the service depends on |
+| `infrastructure` | `ProductClient` (implements `ProductCatalog`): HTTP calls, circuit breakers, bulkheads, cache, validation, error translation |
 | `config` | HTTP client timeouts, virtual-thread executor, caching, circuit breaker logging |
 
 ## Behaviour

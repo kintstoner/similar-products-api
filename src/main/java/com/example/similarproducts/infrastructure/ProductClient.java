@@ -1,5 +1,6 @@
 package com.example.similarproducts.infrastructure;
 
+import com.example.similarproducts.domain.ProductCatalog;
 import com.example.similarproducts.domain.ProductDetail;
 import com.example.similarproducts.domain.ProductNotFoundException;
 import com.example.similarproducts.domain.UpstreamUnavailableException;
@@ -34,7 +35,7 @@ import org.springframework.web.client.RestClientException;
  * no retry: under load, retrying against an already slow service multiplies the traffic that is hurting it.
  */
 @Component
-public class ProductClient {
+public class ProductClient implements ProductCatalog {
 
     private static final Logger log = LoggerFactory.getLogger(ProductClient.class);
 
@@ -53,6 +54,7 @@ public class ProductClient {
         this.productDetailBulkhead = bulkheads.bulkhead("productDetail");
     }
 
+    @Override
     @Cacheable(CacheNames.SIMILAR_IDS)
     public List<String> getSimilarIds(String productId) {
         // The upstream sends numeric ids although the contract declares strings; Jackson coerces them to String
@@ -70,6 +72,7 @@ public class ProductClient {
      * @return the product detail, or empty when the product does not exist or its detail lacks a field the contract
      *         requires (Spring caches the empty result too)
      */
+    @Override
     @Cacheable(CacheNames.PRODUCT_DETAILS)
     public Optional<ProductDetail> getProductDetail(String productId) {
         ProductDetailResponse body;

@@ -1,7 +1,7 @@
 package com.example.similarproducts.application;
 
+import com.example.similarproducts.domain.ProductCatalog;
 import com.example.similarproducts.domain.ProductDetail;
-import com.example.similarproducts.infrastructure.ProductClient;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.util.List;
@@ -18,15 +18,15 @@ public class SimilarProductsService {
 
     private static final Logger log = LoggerFactory.getLogger(SimilarProductsService.class);
 
-    private final ProductClient productClient;
+    private final ProductCatalog productCatalog;
     private final ExecutorService productLookupExecutor;
     private final SimilarProductsProperties properties;
     private final Counter missingProducts;
     private final Counter failedProducts;
 
-    public SimilarProductsService(ProductClient productClient, ExecutorService productLookupExecutor,
+    public SimilarProductsService(ProductCatalog productCatalog, ExecutorService productLookupExecutor,
             SimilarProductsProperties properties, MeterRegistry meterRegistry) {
-        this.productClient = productClient;
+        this.productCatalog = productCatalog;
         this.productLookupExecutor = productLookupExecutor;
         this.properties = properties;
         // The response cannot say that a product was left out, so the metric is where it shows up
@@ -47,7 +47,7 @@ public class SimilarProductsService {
      * A similar product whose detail is missing, fails or is too slow is left out: partial results beat no results.
      */
     public List<ProductDetail> getSimilarProducts(String productId) {
-        List<String> similarIds = productClient.getSimilarIds(productId).stream()
+        List<String> similarIds = productCatalog.getSimilarIds(productId).stream()
                 .distinct()
                 .toList();
 
@@ -62,7 +62,7 @@ public class SimilarProductsService {
     }
 
     private CompletableFuture<Optional<ProductDetail>> lookUpDetail(String id) {
-        return CompletableFuture.supplyAsync(() -> productClient.getProductDetail(id), productLookupExecutor)
+        return CompletableFuture.supplyAsync(() -> productCatalog.getProductDetail(id), productLookupExecutor)
                 .orTimeout(properties.lookupTimeout().toMillis(), TimeUnit.MILLISECONDS)
                 .handle((detail, error) -> {
                     if (error != null) {
