@@ -113,18 +113,27 @@ el circuito): cada error hizo fallar al menos un test.
 
 | Ejecución | Peticiones | Errores | Media | p95 | Máx. |
 |---|---|---|---|---|---|
-| Con caché (por defecto), app en Docker | 19.740 | 0, todas `200` | 15 ms | 30 ms | 3,1 s |
+| Con caché (por defecto), app en Docker | 18.586 | 0, todas `200` | 47 ms | 40 ms | 3,2 s |
 | Sin caché, app en el host | 11.221 | 0, todas `200` | 397 ms | 1,56 s | 3,9 s |
+
+La ejecución sin caché es de antes del ADR 8; `SPRING_CACHE_TYPE=none` también desactiva la memoria de productos
+lentos, así que no la cambia.
 
 **Con caché** (la configuración normal):
 
 ![Dashboard de k6 con caché](docs/k6-dashboard.png)
 
 Los cinco escenarios se ejecutan uno tras otro a ~400 req/s. Los tiempos se quedan en pocos milisegundos porque, tras
-las primeras peticiones, los productos salen de la caché y el circuito abierto descarta los productos lentos 1000 y
-10000 sin esperar. Los picos de 3 s al final de "slow" y "verySlow" son una media sobre muy pocas peticiones: cuando
-paran los usuarios virtuales, las únicas que aún terminan son las que llegaron a los productos lentos (por ejemplo
-cuando el circuito vuelve a probar) y esperaron al timeout de 3 s. Las "interrupted iterations" de la salida de k6 las
+las primeras peticiones, los productos salen de la caché y los productos lentos 1000 y 10000 se omiten sin esperar
+(ADR 8). Los dos picos son el arranque en frío del primer escenario y el inicio de "verySlow": los 200 usuarios
+virtuales que piden el producto 3 a la vez esperan todos el primer timeout de 3 s del producto 10000 antes de que quede
+recordado como lento.
+
+Frente a la versión anterior (misma máquina, mismo día: 19.653 peticiones, 18,6 ms de media, 35,6 ms de p95), la media
+sube y el p95 apenas se mueve. Los números anteriores se apoyaban en que el circuito de detalle seguía abierto durante
+los escenarios lentos: cada prueba llegaba al producto 1000, daba timeout y lo volvía a abrir, así que se rechazaba
+toda llamada de detalle no cacheada, también la de productos sanos. Ahora un producto lento ya no mantiene abierto el
+circuito, a cambio de una espera de 3 s por cada producto lento nuevo. Las "interrupted iterations" de la salida de k6 las
 provoca `gracefulStop: 0s` en el script de la prueba, no son errores.
 
 **Sin caché**, para demostrar que el servicio aguanta por diseño y no solo gracias a la caché:
@@ -139,7 +148,9 @@ provoca `gracefulStop: 0s` en el script de la prueba, no son errores.
   consigue el servicio. El servicio añade poco encima.
 - Con la app dentro de Docker y sin caché, 14 de ~11.700 peticiones recibieron un `503`: abrir conexiones nuevas desde
   el contenedor de la app hasta el mock a través de `host.docker.internal` superó el timeout de conexión (1 s) con esa
-  carga. Con la app en el host, y en todas las ejecuciones con caché, no hubo ninguno. La causa registrada en el log
+  carga. Con la app en el host no hubo ninguno. Con caché también puede pasar, de forma intermitente: la ráfaga de 200
+  conexiones nuevas al empezar un escenario dio 23 y 42 `503` en dos ejecuciones del 2026-10-29 (las dos versiones) y
+  ninguno en la ejecución de arriba. La causa registrada en el log
   permitió encontrarlo rápido.
 
 ## Limitaciones conocidas

@@ -37,4 +37,6 @@ Caffeine `slowProducts` durante **30 s** (`product-api.slow-product-ttl`). Mient
 
 - Desde la segunda petición, `/product/2` y `/product/3` responden en pocos milisegundos en vez de en unos 3 s.
 - Un producto lento que se recupera sigue omitido hasta 30 s.
+- Un producto lento ya no mantiene abierto el circuito de detalle. Con la ráfaga de k6 eso cuesta una espera de 3 s por
+  cada producto lento nuevo: la media pasa de 18,6 ms a 47 ms y el p95 de 36 ms a 40 ms (README, prueba de carga).
 - Con varias instancias, cada una aprende por su cuenta qué productos son lentos.

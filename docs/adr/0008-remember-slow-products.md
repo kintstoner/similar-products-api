@@ -36,4 +36,6 @@ cache for **30 s** (`product-api.slow-product-ttl`). While it is there, `getProd
 
 - From the second request on, `/product/2` and `/product/3` answer in a few milliseconds instead of about 3 s.
 - A slow product that recovers is still left out for up to 30 s.
+- One slow product no longer keeps the detail circuit open. Under the k6 burst this costs one 3 s wait per new slow
+  product: the mean goes from 18.6 ms to 47 ms and the p95 from 36 ms to 40 ms (README, load test).
 - With several instances, each one learns on its own which products are slow.

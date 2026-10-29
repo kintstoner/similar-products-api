@@ -113,18 +113,26 @@ test fail.
 
 | Run | Requests | Errors | Mean | p95 | Max |
 |---|---|---|---|---|---|
-| With cache (default), app in Docker | 19,740 | 0, all `200` | 15 ms | 30 ms | 3.1 s |
+| With cache (default), app in Docker | 18,586 | 0, all `200` | 47 ms | 40 ms | 3.2 s |
 | Without cache, app on the host | 11,221 | 0, all `200` | 397 ms | 1.56 s | 3.9 s |
+
+The run without cache is from before ADR 8; `SPRING_CACHE_TYPE=none` also turns off the memory of slow products,
+so it does not change it.
 
 **With cache** (the normal configuration):
 
 ![k6 dashboard with cache](docs/k6-dashboard.png)
 
 The five scenarios run one after another at ~400 req/s. Response times stay at a few milliseconds because, after the
-first requests, products come from the cache and the open circuit drops the slow products 1000 and 10000 without
-waiting. The 3 s spikes at the end of "slow" and "verySlow" are a mean over very few requests: once the virtual users
-stop, the only requests still finishing are the ones that reached the slow products (for example when the circuit
-probes again) and waited for the 3 s timeout. The "interrupted iterations" in the k6 output come from
+first requests, products come from the cache and the slow products 1000 and 10000 are skipped without waiting
+(ADR 8). The two spikes are the cold start of the first scenario and the start of "verySlow": the 200 virtual users
+that ask for product 3 at once all wait for the first 3 s timeout of product 10000 before it is remembered as slow.
+
+Compared with the previous version (same machine, same day: 19,653 requests, 18.6 ms mean, 35.6 ms p95), the mean goes
+up and the p95 barely moves. The previous numbers relied on the detail circuit staying open through the slow
+scenarios: every probe reached product 1000, timed out and opened it again, so every uncached detail call was
+rejected, healthy products included. Now one slow product no longer keeps the circuit open, at the cost of one 3 s wait
+per new slow product. The "interrupted iterations" in the k6 output come from
 `gracefulStop: 0s` in the test script, not from errors.
 
 **Without cache**, to show the service holds up by design and not only thanks to the cache:
@@ -139,7 +147,8 @@ probes again) and waited for the 3 s timeout. The "interrupted iterations" in th
   achieves. The service adds little on top.
 - With the app inside Docker and no cache, 14 of ~11,700 requests got a `503`: opening new connections from the app
   container to the mock through `host.docker.internal` timed out (1 s connect timeout) under that load. With the app
-  on the host, and in every run with the cache, there were none. The logged cause made this easy to find.
+  on the host there were none. The same can happen, intermittently, with the cache: the burst of 200 new connections at
+  the start of a scenario gave 23 and 42 `503`s in two runs on 2026-10-29 (both versions) and none in the run above. The logged cause made this easy to find.
 
 ## Known limitations
 
