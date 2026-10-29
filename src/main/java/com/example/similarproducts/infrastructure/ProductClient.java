@@ -10,11 +10,16 @@ import io.github.resilience4j.bulkhead.BulkheadRegistry;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
+import java.net.http.HttpConnectTimeoutException;
+import java.net.http.HttpTimeoutException;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
@@ -30,6 +35,9 @@ import org.springframework.web.client.RestClientException;
  * appear in the next few minutes. Failures are never cached. The cache sits in front of the circuit breakers, so
  * cached products are still served while a circuit is open.
  * <p>
+ * A product whose detail times out is remembered as slow for a short while and skipped without calling the product
+ * API: otherwise every request that includes it would wait the whole read timeout again.
+ * <p>
  * Each endpoint has its own circuit breaker and bulkhead. The bulkhead caps the calls in flight: virtual threads make
  * waiting cheap for us, so without a cap a slow product API would receive every request we get. There is deliberately
  * no retry: under load, retrying against an already slow service multiplies the traffic that is hurting it.
@@ -44,14 +52,16 @@ public class ProductClient implements ProductCatalog {
     private final CircuitBreaker productDetailCircuitBreaker;
     private final Bulkhead similarIdsBulkhead;
     private final Bulkhead productDetailBulkhead;
+    private final Cache slowProducts;
 
     public ProductClient(RestClient productApiRestClient, CircuitBreakerRegistry circuitBreakers,
-            BulkheadRegistry bulkheads) {
+            BulkheadRegistry bulkheads, CacheManager cacheManager) {
         this.restClient = productApiRestClient;
         this.similarIdsCircuitBreaker = circuitBreakers.circuitBreaker("productSimilarIds");
         this.productDetailCircuitBreaker = circuitBreakers.circuitBreaker("productDetail");
         this.similarIdsBulkhead = bulkheads.bulkhead("productSimilarIds");
         this.productDetailBulkhead = bulkheads.bulkhead("productDetail");
+        this.slowProducts = Objects.requireNonNull(cacheManager.getCache(CacheNames.SLOW_PRODUCTS));
     }
 
     @Override
@@ -75,6 +85,10 @@ public class ProductClient implements ProductCatalog {
     @Override
     @Cacheable(CacheNames.PRODUCT_DETAILS)
     public Optional<ProductDetail> getProductDetail(String productId) {
+        if (slowProducts.get(productId) != null) {
+            // Thrown, not returned: the empty result would be cached as "not found" for the full cache TTL
+            throw new UpstreamUnavailableException("Product " + productId + " timed out recently; skipped for now");
+        }
         ProductDetailResponse body;
         try {
             body = call(productDetailCircuitBreaker, productDetailBulkhead, productId, () -> restClient.get()
@@ -86,6 +100,11 @@ public class ProductClient implements ProductCatalog {
                     .body(ProductDetailResponse.class));
         } catch (ProductNotFoundException e) {
             return Optional.empty();
+        } catch (UpstreamUnavailableException e) {
+            if (isReadTimeout(e)) {
+                slowProducts.put(productId, Boolean.TRUE);
+            }
+            throw e;
         }
         Optional<ProductDetail> detail = body == null ? Optional.empty() : body.toDomain();
         if (detail.isEmpty()) {
@@ -109,5 +128,17 @@ public class ProductClient implements ProductCatalog {
         } catch (BulkheadFullException e) {
             throw new UpstreamUnavailableException("Too many calls in flight to " + bulkhead.getName(), e);
         }
+    }
+
+    /**
+     * A connect timeout means the product API is unreachable, not that this product is slow, so it does not count.
+     */
+    private static boolean isReadTimeout(Throwable error) {
+        for (Throwable cause = error; cause != null; cause = cause.getCause()) {
+            if (cause instanceof HttpTimeoutException && !(cause instanceof HttpConnectTimeoutException)) {
+                return true;
+            }
+        }
+        return false;
     }
 }

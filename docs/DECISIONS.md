@@ -13,3 +13,4 @@ One line per decision; the full reasoning is in each Architecture Decision Recor
 | [5](adr/0005-cache-with-negative-caching.md) | Caffeine cache, 404 cached too, in front of the breaker | Repeated products are served from memory, even with the circuit open |
 | [6](adr/0006-openapi-first.md) | Controller implements an interface generated from the contract | The build fails if the code drifts from the agreed contract |
 | [7](adr/0007-bulkhead.md) | Bulkhead: at most 500 calls in flight per endpoint | Virtual threads remove the thread pool's natural brake; the dependency needs one |
+| [8](adr/0008-remember-slow-products.md) | A product that timed out is skipped for 30 s | A consistently slow product must not cost every request the full timeout |

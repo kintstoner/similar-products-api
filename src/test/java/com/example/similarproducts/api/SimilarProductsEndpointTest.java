@@ -154,6 +154,23 @@ class SimilarProductsEndpointTest {
     }
 
     @Test
+    void answersRepeatedRequestsWithoutWaitingAgainForAProductThatTimedOut() throws Exception {
+        stubSimilarIds("2", "[3,100,1000]");
+        stubProduct("3", 0);
+        stubProduct("100", 0);
+        stubProduct("1000", 5_000);
+        mockMvc.perform(get("/product/2/similar")).andExpect(status().isOk());
+
+        long start = System.nanoTime();
+        mockMvc.perform(get("/product/2/similar"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[*].id").value(contains("3", "100")));
+        long elapsedMillis = (System.nanoTime() - start) / 1_000_000;
+
+        assertThat(elapsedMillis).isLessThan(500);
+    }
+
+    @Test
     void returns503WhenSimilarIdsAreUnavailable() throws Exception {
         upstream.stubFor(WireMock.get("/product/1/similarids").willReturn(aResponse().withStatus(500)));
 

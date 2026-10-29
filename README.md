@@ -68,7 +68,7 @@ Packages (by responsibility, light hexagonal):
 |---|---|
 | All similar products available | `200`, details in similarity order |
 | A similar product returns 404 or 5xx | `200` without that product |
-| A similar product takes longer than 3 s | `200` without that product, answered in about 3 s at most |
+| A similar product takes longer than 3 s | `200` without that product, answered in about 3 s at most; for the next 30 s it is left out without waiting |
 | A similar product arrives without a required field | `200` without that product (forwarding it would break the contract) |
 | Too many calls already in flight to the product API | `200` without the products that could not get a slot within 200 ms |
 | Requested product does not exist | `404` (Problem Detail) |
@@ -86,17 +86,18 @@ and consequences. In short:
 - **Circuit breaker, no retry**: retrying against a slow service under load only adds load.
 - **Bulkhead**: virtual threads make waiting free for us, so the product API needs an explicit cap on calls in flight.
 - **Caffeine cache with negative caching** in front of the circuit breaker.
+- **Slow products remembered for 30 s**: a product that timed out is skipped without waiting for it again.
 - **OpenAPI-first**: the build fails if the controller drifts from the contract.
 
 ## How it was tested
 
-**47 automated tests** (`./mvnw verify`), in three layers:
+**51 automated tests** (`./mvnw verify`), in three layers:
 
 | Layer | Tests | What they cover |
 |---|---|---|
 | Unit (JUnit 5 + Mockito, no Spring) | `SimilarProductsServiceTest` (7) | Similarity order when an earlier product answers last, deduplication, products left out on 404/failure, lookup safety timeout, empty list, 404 propagation, left-out metric |
 | Web slice (`@WebMvcTest`) | `SimilarProductsControllerTest` (4) | Contract JSON format and order, 404 and 503 Problem Details (no internal messages leaked), 503 cause logged |
-| Integration (Spring Boot + WireMock as the product API) | `ProductClientTest`, `ProductClientCacheTest`, `ProductClientCircuitBreakerTest`, `ProductClientBulkheadTest`, `SimilarProductsEndpointTest`, `OperationalEndpointsTest`, startup test (36) | Real HTTP: numeric ids, 404/500/timeout translation, incomplete details, parallelism, partial results, 503, circuit breaker opening (not on 404s) and its log, bulkhead rejecting beyond the cap without opening the circuit, caching of details, ids and 404s, no caching of failures, health, metrics, Swagger UI |
+| Integration (Spring Boot + WireMock as the product API) | `ProductClientTest`, `ProductClientCacheTest`, `ProductClientCircuitBreakerTest`, `ProductClientBulkheadTest`, `SimilarProductsEndpointTest`, `OperationalEndpointsTest`, startup test (40) | Real HTTP: numeric ids, 404/500/timeout translation, slow products skipped after a timeout (not after a 5xx), incomplete details, parallelism, partial results, 503, circuit breaker opening (not on 404s) and its log, bulkhead rejecting beyond the cap without opening the circuit, caching of details, ids and 404s, no caching of failures, health, metrics, Swagger UI |
 
 Unit tests check the orchestration logic in isolation; integration tests check what only shows up over real HTTP
 (timeouts, upstream quirks, cache, breaker and bulkhead wiring). Tests written for code that already existed were
@@ -105,7 +106,7 @@ order, leaking the internal error message, letting bulkhead rejections open the 
 test fail.
 
 **Manual checks** against the real mocks, with the app in Docker: `/product/1` returns 2, 3, 4 in order;
-`/product/4` and `/product/5` return 1, 2; `/product/2` returns 3, 100 in about 3 s; `/product/3` returns 100;
+`/product/4` and `/product/5` return 1, 2; `/product/2` returns 3, 100 in about 3 s, and in a few milliseconds on the next request; `/product/3` returns 100;
 `/product/99` returns 404.
 
 ### Load test (official k6 script, laptop, Docker Desktop on Windows)
@@ -147,6 +148,7 @@ probes again) and waited for the 3 s timeout. The "interrupted iterations" in th
 - The response does not say that a product was left out; it shows up in the `similar.products.left.out` metric and in
   the logs.
 - Prices and availability can be up to 5 minutes stale (cache TTL, configurable).
+- A slow product that recovers is still left out for up to 30 s (ADR 8).
 - The bulkhead limit (500) is sized for the load test, not for a real dependency's capacity (ADR 7).
 
 ## Configuration
@@ -156,6 +158,7 @@ probes again) and waited for the 3 s timeout. The "interrupted iterations" in th
 | `product-api.base-url` (`PRODUCT_API_BASE_URL`) | `http://localhost:3001` | Product API root |
 | `product-api.connect-timeout` | `1s` | TCP connect timeout |
 | `product-api.read-timeout` | `3s` | Time allowed per call before the product is left out |
+| `product-api.slow-product-ttl` | `30s` | How long a product that timed out is skipped |
 | `similar-products.lookup-timeout` | `4s` | Safety net per detail lookup |
 | `spring.cache.type` (`SPRING_CACHE_TYPE`) | `caffeine` | `none` disables the cache |
 | `spring.cache.caffeine.spec` | `maximumSize=10000,expireAfterWrite=5m,recordStats` | Cache size and TTL |

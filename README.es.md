@@ -68,7 +68,7 @@ Paquetes (por responsabilidad, hexagonal ligera):
 |---|---|
 | Todos los similares disponibles | `200`, detalles en orden de similitud |
 | Un similar devuelve 404 o 5xx | `200` sin ese producto |
-| Un similar tarda más de 3 s | `200` sin ese producto, en unos 3 s como máximo |
+| Un similar tarda más de 3 s | `200` sin ese producto, en unos 3 s como máximo; los 30 s siguientes se omite sin esperarlo |
 | Un similar llega sin un campo obligatorio | `200` sin ese producto (reenviarlo rompería el contrato) |
 | Demasiadas llamadas en vuelo al API de productos | `200` sin los productos que no consiguieron hueco en 200 ms |
 | El producto pedido no existe | `404` (Problem Detail) |
@@ -86,17 +86,18 @@ opciones y consecuencias. En breve:
 - **Circuit breaker sin reintentos**: reintentar contra un servicio lento bajo carga solo añade carga.
 - **Bulkhead**: con hilos virtuales esperar nos sale gratis, así que el API de productos necesita un límite explícito de llamadas en vuelo.
 - **Caché Caffeine con caché negativa** delante del circuit breaker.
+- **Productos lentos recordados 30 s**: un producto que dio timeout se omite sin volver a esperarlo.
 - **OpenAPI-first**: la compilación falla si el controlador se separa del contrato.
 
 ## Cómo se ha probado
 
-**47 tests automáticos** (`./mvnw verify`), en tres capas:
+**51 tests automáticos** (`./mvnw verify`), en tres capas:
 
 | Capa | Tests | Qué cubren |
 |---|---|---|
 | Unitarios (JUnit 5 + Mockito, sin Spring) | `SimilarProductsServiceTest` (7) | Orden de similitud cuando un producto anterior responde el último, deduplicación, omisión ante 404/fallo, timeout de seguridad, lista vacía, propagación del 404, métrica de omitidos |
 | Slice web (`@WebMvcTest`) | `SimilarProductsControllerTest` (4) | Formato JSON del contrato y orden, Problem Details 404 y 503 (sin filtrar mensajes internos), causa del 503 en el log |
-| Integración (Spring Boot + WireMock como API de productos) | `ProductClientTest`, `ProductClientCacheTest`, `ProductClientCircuitBreakerTest`, `ProductClientBulkheadTest`, `SimilarProductsEndpointTest`, `OperationalEndpointsTest`, test de arranque (36) | HTTP real: ids numéricos, traducción de 404/500/timeout, detalles incompletos, paralelismo, resultados parciales, 503, apertura del circuit breaker (no con 404) y su log, bulkhead que rechaza por encima del límite sin abrir el circuito, caché de detalles, ids y 404, no cachear fallos, health, métricas, Swagger UI |
+| Integración (Spring Boot + WireMock como API de productos) | `ProductClientTest`, `ProductClientCacheTest`, `ProductClientCircuitBreakerTest`, `ProductClientBulkheadTest`, `SimilarProductsEndpointTest`, `OperationalEndpointsTest`, test de arranque (40) | HTTP real: ids numéricos, traducción de 404/500/timeout, productos lentos omitidos tras un timeout (no tras un 5xx), detalles incompletos, paralelismo, resultados parciales, 503, apertura del circuit breaker (no con 404) y su log, bulkhead que rechaza por encima del límite sin abrir el circuito, caché de detalles, ids y 404, no cachear fallos, health, métricas, Swagger UI |
 
 Los unitarios prueban la lógica de orquestación aislada; los de integración, lo que solo aparece con HTTP real
 (timeouts, rarezas del API externo, cableado de caché, breaker y bulkhead). Los tests escritos para código que ya
@@ -105,7 +106,7 @@ manejo de fallos, invertir el orden, filtrar el mensaje interno del error, dejar
 el circuito): cada error hizo fallar al menos un test.
 
 **Comprobaciones manuales** contra los mocks reales, con la app en Docker: `/product/1` devuelve 2, 3, 4 en orden;
-`/product/4` y `/product/5` devuelven 1, 2; `/product/2` devuelve 3, 100 en unos 3 s; `/product/3` devuelve 100;
+`/product/4` y `/product/5` devuelven 1, 2; `/product/2` devuelve 3, 100 en unos 3 s, y en pocos milisegundos en la siguiente petición; `/product/3` devuelve 100;
 `/product/99` devuelve 404.
 
 ### Prueba de carga (script k6 oficial, portátil, Docker Desktop en Windows)
@@ -147,6 +148,7 @@ provoca `gracefulStop: 0s` en el script de la prueba, no son errores.
 - Mientras el circuito de detalle está abierto, un producto sano no cacheado también se omite, durante hasta 5 s (ADR 4).
 - La respuesta no indica que se ha omitido un producto; aparece en la métrica `similar.products.left.out` y en los logs.
 - Precio y disponibilidad pueden tener hasta 5 minutos de antigüedad (TTL de la caché, configurable).
+- Un producto lento que se recupera sigue omitido hasta 30 s (ADR 8).
 - El límite del bulkhead (500) está dimensionado para la prueba de carga, no para la capacidad de una dependencia real (ADR 7).
 
 ## Configuración
@@ -156,6 +158,7 @@ provoca `gracefulStop: 0s` en el script de la prueba, no son errores.
 | `product-api.base-url` (`PRODUCT_API_BASE_URL`) | `http://localhost:3001` | Raíz del API de productos |
 | `product-api.connect-timeout` | `1s` | Timeout de conexión TCP |
 | `product-api.read-timeout` | `3s` | Tiempo por llamada antes de omitir el producto |
+| `product-api.slow-product-ttl` | `30s` | Cuánto tiempo se omite un producto que dio timeout |
 | `similar-products.lookup-timeout` | `4s` | Red de seguridad por consulta de detalle |
 | `spring.cache.type` (`SPRING_CACHE_TYPE`) | `caffeine` | `none` desactiva la caché |
 | `spring.cache.caffeine.spec` | `maximumSize=10000,expireAfterWrite=5m,recordStats` | Tamaño y TTL de la caché |

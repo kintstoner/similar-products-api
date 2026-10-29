@@ -2,7 +2,9 @@ package com.example.similarproducts.infrastructure;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
+import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -115,5 +117,25 @@ class ProductClientTest {
         upstream.stubFor(get("/product/1000").willReturn(okJson("{}").withFixedDelay(1_000)));
 
         assertThatThrownBy(() -> client.getProductDetail("1000")).isInstanceOf(UpstreamUnavailableException.class);
+    }
+
+    @Test
+    void skipsAProductThatTimedOutRecentlyWithoutCallingTheProductApiAgain() {
+        upstream.stubFor(get("/product/1000").willReturn(okJson("{}").withFixedDelay(1_000)));
+
+        assertThatThrownBy(() -> client.getProductDetail("1000")).isInstanceOf(UpstreamUnavailableException.class);
+        assertThatThrownBy(() -> client.getProductDetail("1000")).isInstanceOf(UpstreamUnavailableException.class);
+
+        upstream.verify(1, getRequestedFor(urlEqualTo("/product/1000")));
+    }
+
+    @Test
+    void doesNotSkipAProductWhoseDetailFailedForAnotherReason() {
+        upstream.stubFor(get("/product/6").willReturn(aResponse().withStatus(500)));
+
+        assertThatThrownBy(() -> client.getProductDetail("6")).isInstanceOf(UpstreamUnavailableException.class);
+        assertThatThrownBy(() -> client.getProductDetail("6")).isInstanceOf(UpstreamUnavailableException.class);
+
+        upstream.verify(2, getRequestedFor(urlEqualTo("/product/6")));
     }
 }

@@ -13,3 +13,4 @@ Una línea por decisión; el razonamiento completo está en cada Architecture De
 | [5](adr/0005-cache-with-negative-caching.es.md) | Caché Caffeine, también de 404, delante del breaker | Los productos repetidos salen de memoria, incluso con el circuito abierto |
 | [6](adr/0006-openapi-first.es.md) | El controlador implementa una interfaz generada desde el contrato | La compilación falla si el código se separa del contrato acordado |
 | [7](adr/0007-bulkhead.es.md) | Bulkhead: como máximo 500 llamadas en vuelo por endpoint | Los hilos virtuales quitan el freno natural del pool de hilos; la dependencia necesita uno |
+| [8](adr/0008-remember-slow-products.es.md) | Un producto que dio timeout se omite durante 30 s | Un producto siempre lento no debe costar el timeout entero a cada petición |

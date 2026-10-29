@@ -11,12 +11,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.example.similarproducts.domain.UpstreamUnavailableException;
 import com.github.tomakehurst.wiremock.junit5.WireMockExtension;
+import java.time.Duration;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.cache.CacheManager;
+import org.springframework.cache.caffeine.CaffeineCache;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
@@ -83,5 +85,13 @@ class ProductClientCacheTest {
         assertThat(client.getSimilarIds("1")).containsExactly("2", "3", "4");
 
         upstream.verify(1, getRequestedFor(urlEqualTo("/product/1/similarids")));
+    }
+
+    @Test
+    void remembersSlowProductsForThirtySecondsByDefault() {
+        CaffeineCache slowProducts = (CaffeineCache) cacheManager.getCache("slowProducts");
+
+        assertThat(slowProducts.getNativeCache().policy().expireAfterWrite())
+                .hasValueSatisfying(expiry -> assertThat(expiry.getExpiresAfter()).isEqualTo(Duration.ofSeconds(30)));
     }
 }
