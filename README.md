@@ -1,6 +1,6 @@
 # similar-products-api
 
-[Español](README.es.md)
+[Español](README.es.md) · [![CI](https://github.com/kintstoner/similar-products-api/actions/workflows/ci.yml/badge.svg)](https://github.com/kintstoner/similar-products-api/actions/workflows/ci.yml)
 
 Spring Boot service that exposes `GET /product/{productId}/similar` on port **5000**: it returns the details of the
 products similar to a given one, **ordered by similarity**, aggregating two existing APIs
@@ -8,6 +8,9 @@ products similar to a given one, **ordered by similarity**, aggregating two exis
 
 Solution to the backend technical test (contract: [`similarProducts.yaml`](src/main/resources/static/openapi/similarProducts.yaml),
 copied unchanged).
+
+**Official k6 test: 18,586 requests, all `200`, p95 40 ms**; slow and failing products are left out without
+holding the response.
 
 ## Run
 
@@ -191,5 +194,8 @@ threads).
   mock bottleneck above), captured the Grafana dashboards with Chrome DevTools, and drafted the documentation.
 - **What was validated by hand**: the design decisions and their trade-offs, the k6 results and the dashboards, and
   every line of this README and the ADRs.
+- **Found by testing by hand**: repeated calls to `/product/2` kept taking 3 s, because a timeout is never cached.
+  That led to remembering slow products for 30 s ([ADR 8](docs/adr/0008-remember-slow-products.md)), kept after
+  measuring both versions under k6.
 - **Guardrails**: the automated test suite, the official k6 test, CI on every push, and a contract-generated
   interface that breaks the build if the API drifts.

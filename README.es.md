@@ -1,6 +1,6 @@
 # similar-products-api
 
-[English](README.md)
+[English](README.md) · [![CI](https://github.com/kintstoner/similar-products-api/actions/workflows/ci.yml/badge.svg)](https://github.com/kintstoner/similar-products-api/actions/workflows/ci.yml)
 
 Servicio Spring Boot que expone `GET /product/{productId}/similar` en el puerto **5000**: devuelve el detalle de los
 productos similares a uno dado, **ordenados por similitud**, agregando dos APIs existentes
@@ -8,6 +8,9 @@ productos similares a uno dado, **ordenados por similitud**, agregando dos APIs 
 
 Solución a la prueba técnica de backend (contrato: [`similarProducts.yaml`](src/main/resources/static/openapi/similarProducts.yaml),
 copiado sin cambios).
+
+**Prueba k6 oficial: 18.586 peticiones, todas `200`, p95 de 40 ms**; los productos lentos o que fallan se omiten
+sin retener la respuesta.
 
 ## Ejecutar
 
@@ -194,5 +197,8 @@ parciales, MVC con hilos virtuales).
   redactó la documentación.
 - **Qué se validó a mano**: las decisiones de diseño y sus contrapartidas, los resultados de k6 y los dashboards, y cada
   línea de este README y de los ADRs.
+- **Encontrado probándolo a mano**: las llamadas repetidas a `/product/2` seguían tardando 3 s, porque un timeout
+  nunca se cachea. De ahí salió recordar los productos lentos durante 30 s
+  ([ADR 8](docs/adr/0008-remember-slow-products.es.md)), que se mantuvo tras medir las dos versiones con k6.
 - **Guardarraíles**: la suite de tests automáticos, la prueba k6 oficial, CI en cada push y una interfaz generada
   desde el contrato que rompe la compilación si el API se desvía.
